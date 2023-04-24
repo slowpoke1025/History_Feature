@@ -1,0 +1,6 @@
+ls
+ls -la
+cat test.c
+tail test.c
+echo 5
+pwd

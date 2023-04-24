@@ -6,6 +6,8 @@
 #include "stack.h"
 #include "cursor.h"
 #include "history.h"
+#include <unistd.h>
+#include <sys/wait.h>
 
 // gcc test.c -o a -l ncurses
 
@@ -58,6 +60,7 @@ int main()
     Cursor cursor;
 
     printw("Enter> ");
+    int pipefd[2];
 
     while (1)
     {
@@ -134,6 +137,96 @@ int main()
                 sprintf(history->buffer[history->count], "%s%s", left->value, right->value + right->top);
                 move_x_end(&cursor);
                 printw("\n%d %s\n", history->count, history->buffer[history->count]);
+
+                char cmd[MAX_COMMAND];
+                char *args[MAX_COMMAND / 2 + 1];
+                strcpy(cmd, history->buffer[history->count]);
+                // cmd[strcspn(cmd, "\n")] = '\0';
+
+                char *token = strtok(cmd, " ");
+                int background = 0;
+                int i = 0;
+                while (token != NULL)
+                {
+                    args[i++] = token;
+                    token = strtok(NULL, " ");
+                }
+                if (args[i - 1][0] == '&')
+                {
+                    background = 1;
+                    printw("background");
+                    args[i - 1] = NULL;
+                }
+                else
+                {
+                    args[i] = NULL;
+                }
+
+                // if (pipe(pipefd) == -1)
+                // {
+                //     perror("pipe");
+                //     exit(1);
+                // }
+
+                int id = fork();
+                if (id == 0)
+                {
+                    // close(pipefd[0]);
+
+                    // if (dup2(pipefd[1], STDOUT_FILENO) == -1)
+                    // {
+                    //     perror("dup2");
+                    //     exit(1);
+                    // }
+                    // if (dup2(pipefd[1], STDERR_FILENO) == -1)
+                    // {
+                    //     perror("dup2");
+                    //     exit(1);
+                    // }
+                    freopen("output.txt", "w", stdout);
+                    freopen("error.txt", "w", stderr);
+
+                    execvp(args[0], args);
+                    exit(1);
+                }
+                wait(NULL);
+                // close(pipefd[1]); // Close the write end of the pipe
+                char buf[BUFFER_SIZE];
+
+                // int n;
+                printw("---------\n");
+
+                // while ((n = read(pipefd[0], buf, BUFFER_SIZE)) > 0)
+                // {
+                //     buf[n] = '\0';
+                //     printw("%s", buf);
+                // }
+                // close(pipefd[0]);
+
+                FILE *fp = fopen("output.txt", "r");
+                FILE *ferr = fopen("error.txt", "r");
+
+                while (fgets(buf, sizeof(buf), ferr) != NULL)
+                {
+                    printw("%s", buf);
+                }
+                while (fgets(buf, sizeof(buf), fp) != NULL)
+                {
+                    if (buf[0] == 27)
+                    {
+                        printw("Command '%s' not found\n", args[0]);
+                        break;
+                    }
+                    printw("%s", buf);
+                }
+
+                fclose(fp);
+                fclose(ferr);
+                printw("---------");
+
+                // refresh();
+                // close(pipefd[0]); // Close the read end of the pipe again (in case read failed)
+
                 ++history->count;
             }
             history->tmp_count = history->count;
