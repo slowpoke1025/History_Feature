@@ -1,5 +1,4 @@
 buffer.txt
-cat.txt
 cursor.c
 cursor.h
 cursor.o
@@ -7,7 +6,6 @@ error
 error.txt
 exec.c
 exec.h
-fail.txt
 h.txt
 history.c
 history.h

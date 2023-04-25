@@ -37,6 +37,7 @@ void clean_line(Cursor *cursor)
     move_x_start(cursor);
     clrtoeol();
 }
+
 void init_window()
 {
     initscr();
@@ -154,78 +155,92 @@ int main()
                 if (args[i - 1][0] == '&')
                 {
                     background = 1;
-                    printw("background");
+                    printw("[background]");
                     args[i - 1] = NULL;
+                    args[i] = NULL;
                 }
                 else
                 {
                     args[i] = NULL;
                 }
 
-                // if (pipe(pipefd) == -1)
-                // {
-                //     perror("pipe");
-                //     exit(1);
-                // }
-
-                int id = fork();
-                if (id == 0)
+                int fd[2];
+                int fderr[2];
+                if (pipe(fd) == -1)
                 {
-                    // close(pipefd[0]);
-
-                    // if (dup2(pipefd[1], STDOUT_FILENO) == -1)
-                    // {
-                    //     perror("dup2");
-                    //     exit(1);
-                    // }
-                    // if (dup2(pipefd[1], STDERR_FILENO) == -1)
-                    // {
-                    //     perror("dup2");
-                    //     exit(1);
-                    // }
-                    freopen("output.txt", "w", stdout);
-                    freopen("error.txt", "w", stderr);
-
-                    execvp(args[0], args);
+                    perror("pipe");
                     exit(1);
                 }
-                wait(NULL);
-                // close(pipefd[1]); // Close the write end of the pipe
-                char buf[BUFFER_SIZE];
-
-                // int n;
-                printw("---------\n");
-
-                // while ((n = read(pipefd[0], buf, BUFFER_SIZE)) > 0)
-                // {
-                //     buf[n] = '\0';
-                //     printw("%s", buf);
-                // }
-                // close(pipefd[0]);
-
-                FILE *fp = fopen("output.txt", "r");
-                FILE *ferr = fopen("error.txt", "r");
-
-                while (fgets(buf, sizeof(buf), ferr) != NULL)
+                if (pipe(fderr) == -1)
                 {
-                    printw("%s", buf);
+                    perror("pipe");
+                    exit(1);
                 }
-                while (fgets(buf, sizeof(buf), fp) != NULL)
+
+                int id = fork();
+
+                if (id == 0)
                 {
-                    if (buf[0] == 27)
+
+                    if (dup2(fd[1], STDOUT_FILENO) == -1)
                     {
-                        printw("Command '%s' not found\n", args[0]);
-                        break;
+                        perror("dup2");
+                        exit(1);
                     }
-                    printw("%s", buf);
+                    if (dup2(fderr[1], STDERR_FILENO) == -1)
+                    {
+                        perror("dup2");
+                        exit(1);
+                    }
+                    close(fd[0]);
+                    close(fderr[0]);
+                    // close(fd[1]);
+                    // close(fderr[1]);
+                    execvp(args[0], args);
+
+                    exit(1);
                 }
+                else
+                {
+                    printw("---------\n");
+                    if (background)
+                    {
+                        printw("[%d]\n", id);
+                    }
+                    else
+                    {
+                        wait(NULL);
 
-                fclose(fp);
-                fclose(ferr);
-                printw("---------");
+                        char buferr[BUFFER_SIZE];
+                        char buf[BUFFER_SIZE];
 
-                // refresh();
-                // close(pipefd[0]); // Close the read end of the pipe again (in case read failed)
+                        close(fd[1]);    // Close the write end of the pipe
+                        close(fderr[1]); // Close the write end of the pipe
+
+                        int n;
+                        while ((n = read(fderr[0], buferr, BUFFER_SIZE)) > 0)
+                        {
+                            buferr[n] = '\0';
+                            printw("%s", buferr);
+                        }
+                        close(fderr[0]);
+
+                        while ((n = read(fd[0], buf, BUFFER_SIZE)) > 0)
+                        {
+                            if (buf[0] == 27)
+                            {
+                                printw("Command '%s' not found\n", args[0]);
+                                close(fd[0]);
+                                break;
+                            }
+                            buf[n] = '\0';
+                            printw("%s", buf);
+                        }
+                        close(fd[0]);
+                    }
+
+                    printw("---------");
+                }
 
                 ++history->count;
             }

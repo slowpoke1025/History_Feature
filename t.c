@@ -7,13 +7,8 @@
 
 int main()
 {
-    int fd;
 
-    if (mkfifo("mypipe", 0666) == -1)
-    {
-        perror("mkfifo");
-        exit(1);
-    }
-
+    // printf("Hello World");
+    sleep(10);
     return 0;
 }
