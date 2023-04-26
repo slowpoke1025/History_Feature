@@ -1,4 +1,3 @@
-
 #include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +46,34 @@ void init_window()
     scrollok(stdscr, TRUE);
 }
 
+int form_args(char *args[MAX_COMMAND / 2 + 1], History *history, int *background)
+{
+    *background = 0;
+    char cmd[MAX_COMMAND];
+    strcpy(cmd, history->buffer[history->count]);
+    // cmd[strcspn(cmd, "\n")] = '\0';
+    char *token = strtok(cmd, " ");
+    int i = 0, len;
+    while (token != NULL)
+    {
+        args[i++] = token;
+        token = strtok(NULL, " ");
+    }
+    if (args[i - 1][0] == '&')
+    {
+        *background = 1;
+        printw("[background]\n");
+        args[i - 1] = NULL;
+        len = i - 1;
+    }
+    else
+    {
+        args[i] = NULL;
+        len = i;
+    }
+    return len;
+}
+
 int main()
 {
     init_window();
@@ -90,12 +117,27 @@ int main()
             printw("Enter> %s", prev_commond);
             break;
         case KEY_CTRL('d'):
+            history->file = fopen(history->filename, "a");
+            if (!history->file)
+            {
+                puts("Failed to update the (*history) file.");
+                exit(1);
+            }
 
+            for (int i = history->file_count; i < history->count; ++i)
+            {
+
+                fprintf(history->file, "%s\n", history->buffer[i]);
+            }
+            fclose(history->file);
+
+            // remove(history->filename);
+            // rename("_h.txt", "h.txt");
+            free(history);
             exit(0);
-
             break;
-        case KEY_DOWN:
 
+        case KEY_DOWN:
             clean_line(&cursor);
             close_stack(left);
             sprintf(history->buffer[history->tmp_count], "%s%s", left->value, right->value + right->top);
@@ -137,111 +179,98 @@ int main()
                 close_stack(left);
                 sprintf(history->buffer[history->count], "%s%s", left->value, right->value + right->top);
                 move_x_end(&cursor);
-                printw("\n%d %s\n", history->count, history->buffer[history->count]);
 
-                char cmd[MAX_COMMAND];
                 char *args[MAX_COMMAND / 2 + 1];
-                strcpy(cmd, history->buffer[history->count]);
-                // cmd[strcspn(cmd, "\n")] = '\0';
+                int background;
+                int len = form_args(args, history, &background);
 
-                char *token = strtok(cmd, " ");
-                int background = 0;
-                int i = 0;
-                while (token != NULL)
-                {
-                    args[i++] = token;
-                    token = strtok(NULL, " ");
-                }
-                if (args[i - 1][0] == '&')
-                {
-                    background = 1;
-                    printw("[background]");
-                    args[i - 1] = NULL;
-                    args[i] = NULL;
-                }
-                else
-                {
-                    args[i] = NULL;
-                }
+                int res;
 
-                int fd[2];
-                int fderr[2];
-                if (pipe(fd) == -1)
-                {
-                    perror("pipe");
-                    exit(1);
-                }
-                if (pipe(fderr) == -1)
-                {
-                    perror("pipe");
-                    exit(1);
-                }
+                if ((res = exc_command(history, args, len)) == 1)
+                    len = form_args(args, history, &background);
 
-                int id = fork();
+                printw("\n%d %s", history->count + 1, history->buffer[history->count]);
 
-                if (id == 0)
+                if (res != 0 && !history_command(history, args, len)) // res == 0 || history_command(history, args, len)
                 {
-
-                    if (dup2(fd[1], STDOUT_FILENO) == -1)
+                    int fd[2];
+                    int fderr[2];
+                    if (pipe(fd) == -1)
                     {
-                        perror("dup2");
+                        perror("pipe");
                         exit(1);
                     }
-                    if (dup2(fderr[1], STDERR_FILENO) == -1)
+                    if (pipe(fderr) == -1)
                     {
-                        perror("dup2");
+                        perror("pipe");
                         exit(1);
                     }
-                    close(fd[0]);
-                    close(fderr[0]);
-                    // close(fd[1]);
-                    // close(fderr[1]);
-                    execvp(args[0], args);
 
-                    exit(1);
-                }
-                else
-                {
-                    printw("---------\n");
-                    if (background)
+                    int id = fork();
+
+                    if (id == 0) // child
                     {
-                        printw("[%d]\n", id);
-                    }
-                    else
-                    {
-                        wait(NULL);
-
-                        char buferr[BUFFER_SIZE];
-                        char buf[BUFFER_SIZE];
-
-                        close(fd[1]);    // Close the write end of the pipe
-                        close(fderr[1]); // Close the write end of the pipe
-
-                        int n;
-                        while ((n = read(fderr[0], buferr, BUFFER_SIZE)) > 0)
+                        if (dup2(fd[1], STDOUT_FILENO) == -1)
                         {
-                            buferr[n] = '\0';
-                            printw("%s", buferr);
+                            perror("dup2");
+                            exit(1);
                         }
-                        close(fderr[0]);
-
-                        while ((n = read(fd[0], buf, BUFFER_SIZE)) > 0)
+                        if (dup2(fderr[1], STDERR_FILENO) == -1)
                         {
-                            if (buf[0] == 27)
-                            {
-                                printw("Command '%s' not found\n", args[0]);
-                                close(fd[0]);
-                                break;
-                            }
-                            buf[n] = '\0';
-                            printw("%s", buf);
+                            perror("dup2");
+                            exit(1);
                         }
                         close(fd[0]);
+                        close(fderr[0]);
+                        close(fd[1]);
+                        close(fderr[1]);
+                        execvp(args[0], args);
+
+                        exit(1);
                     }
+                    else // parent
+                    {
+                        printw("\n---------\n");
+                        if (background)
+                        {
+                            printw("\n[%d]", id);
+                        }
+                        else
+                        {
+                            wait(NULL);
 
-                    printw("---------");
+                            char buferr[BUFFER_SIZE];
+                            char buf[BUFFER_SIZE];
+
+                            close(fd[1]);    // Close the write end of the pipe
+                            close(fderr[1]); // Close the write end of the pipe
+
+                            int n;
+                            while ((n = read(fderr[0], buferr, 1)) > 0)
+                            {
+                                buferr[n] = '\0';
+                                printw("%s", buferr);
+                            }
+                            close(fderr[0]);
+
+                            while ((n = read(fd[0], buf, 1)) > 0)
+                            {
+                                if (buf[0] == 27)
+                                {
+                                    printw("Command '%s' not found\n", args[0]);
+                                    close(fd[0]);
+                                    break;
+                                }
+                                buf[n] = '\0';
+                                printw("%s", buf);
+                                refresh();
+                            }
+                            close(fd[0]);
+                        }
+
+                        printw("---------\n");
+                    }
                 }
-
                 ++history->count;
             }
             history->tmp_count = history->count;

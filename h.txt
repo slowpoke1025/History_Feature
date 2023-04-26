@@ -1,93 +1,28 @@
 ls
-ls -la
-cat test.c
-tail test.c
-echo 5
-pwd
-sleep 5 &
+ps
+history
 ls
 ps
-ls
-buf
-kk
-./test &
-p
-ls
-sleep 10 &
-ls
-ks
-ls
 ps
-sleep 10 &
 ps
-ps 2590
-ps
+history
 ls
-cat cat.txt
+history
+ps
+ps
 sleep 5 &
 ps
-lk 555
-pl
+history
+sleep 5 &
 ps
-ls &
-ps
-sleep 10 &
-ps
-ls 956
-ps
-ls &
-ps
-sleep 10 &
-ps
-ls 6565
-ps
-kdm
-ls 
-ps
-ls -la
-ps
-65
-77
-88 55
-ps
-ps -ela
-ps -l
-ps -la
-node
-ps
-ls
-6516
-ps
-sleep 50 &
-pwd
-88
-ps
-uname
-ps
-sleep 8 &
-ps
-ls
+!0
+!ac
+!50
+history
 ls
 ps
-ls -la
-sleep 8 &
+history
 ps
-pwd
+ps
+history
 ls
-ps
-6565
-ps
-pwd 4654
-ps
-ls
-ls -55
-ps
-ls
-ps
-ps
-ls
-pwd &
-ps
-lw
-ls
-sleep 10 &
