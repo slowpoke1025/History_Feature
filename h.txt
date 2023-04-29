@@ -26,3 +26,4 @@ ps
 ps
 history
 ls
+ls cat.txt h.txt

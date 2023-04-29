@@ -154,23 +154,10 @@ int main()
                 sprintf(history->buffer[history->count], "%s%s", left->value, right->value + right->top);
                 move_x_end(&cursor);
 
-                // char *args[MAX_COMMAND / 2 + 1];
+                Args A;
+                _form_args(&A, history->buffer[history->count], FALSE);
 
-                char *args[MAX_COMMAND / 2 + 1];
-                for (int i = 0; i < MAX_COMMAND / 2 + 1; ++i)
-                {
-                    args[i] = (char *)malloc(sizeof(char) * (MAX_COMMAND / 2 + 1));
-                }
-                int len = form_args(args, history, history->count);
-                int res;
-
-                if ((res = exc_command(history, args, len)) == 1)
-                    len = form_args(args, history, history->count);
-
-                printw("\n%d %s", history->count + 1, history->buffer[history->count]);
-                refresh();
-
-                if (res != 0 && !history_command(history, args, len)) // res == 0 || history_command(history, args, len)
+                if (exc_command(&A, history) && !history_command(&A, history)) // res == 0 || history_command(history, args, len)
                 {
                     int fd[2];
                     int fderr[2];
@@ -203,16 +190,20 @@ int main()
                         close(fd[1]);
                         close(fderr[1]);
 
-                        execvp(args[0], args);
+                        execvp(A.args[0], A.args);
 
                         exit(1);
                     }
                     else // parent
                     {
+
                         printw("\n---------\n");
-                        if (history->background)
+                        refresh();
+
+                        if (A.paralle)
                         {
                             printw("\n[%d]", id);
+                            refresh();
                         }
                         else
                         {
@@ -236,7 +227,7 @@ int main()
                             {
                                 if (buf[0] == 27)
                                 {
-                                    printw("Command '%s' not found\n", args[0]);
+                                    printw("Command '%s' not found\n", A.args[0]);
                                     close(fd[0]);
                                     break;
                                 }
@@ -251,10 +242,7 @@ int main()
                     }
                 }
                 ++history->count;
-                for (int i = 0; i < MAX_COMMAND / 2 + 1; ++i)
-                {
-                    free(args[i]);
-                }
+                _free_args(&A);
             }
             history->tmp_count = history->count;
             history->buffer[history->count][0] = '\0';

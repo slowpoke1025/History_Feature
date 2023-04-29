@@ -5,33 +5,14 @@
 
 int form_args(char *(arg)[SIZE], char *str)
 {
-    char copy[SIZE];
-    strcpy(copy, str);
-    char *token;
-    // char **arg = ptr;
-    token = strtok(copy, " ");
-    int i = 0;
-    while (token)
+    for (int i = 0; i < SIZE; ++i)
     {
-        // arg[i++] = token;
-        strcpy(arg[i++], token);
-        token = strtok(NULL, " ");
+        strcpy(arg[i], "hello world");
     }
-    return i;
 }
 int main()
 {
-    char *args[SIZE];
-
-    for (int i = 0; i < SIZE; ++i)
-    {
-        args[i] = (char *)malloc(sizeof(char) * 1024);
-    }
-
-    char str[] = "aa bb cc dd ee";
-
-    int s = form_args(args, str);
-    for (int i = 0; i < s; i++)
-        printf("%s\n", args[i]);
+    char str[] = "ssd";
+    printf("%d", strcpy(str, "hd\0d")[2] == '\0');
     return 0;
 }

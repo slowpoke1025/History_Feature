@@ -19,11 +19,22 @@ typedef struct History
 
 } History;
 
+typedef struct Args
+{
+    char *args[MAX_COMMAND / 2 + 1];
+    int size;
+    int paralle;
+} Args;
+
 History *init_history(char *filename);
 void write_history();
-int history_command(History *history, char *args[MAX_COMMAND / 2 + 1], int len);
-int exc_command(History *history, char *args[MAX_COMMAND / 2 + 1], int len);
+int history_command(Args *A, History *History);
+
+int exc_command(Args *A, History *history);
+
 int replace(char **ptr, char *str, char *sub, char *tar);
-int form_args(char * [MAX_COMMAND / 2 + 1], History *history, int count);
+int _form_args(Args *A, char *str, int free);
+void _free_args(Args *A);
+int get_n_par(Args *A, char *par);
 
 #endif
