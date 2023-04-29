@@ -77,23 +77,26 @@ int history_command(History *history, char *args[MAX_COMMAND / 2 + 1], int len)
 
 int exc_command(History *history, char *args[MAX_COMMAND / 2 + 1], int len)
 {
-    if (args[0][0] == '!' && len == 1)
+    if (!strchr(history->buffer[history->count], '!'))
     {
+        return -1;
+    }
+    if (args[0][0] == '!')
+    {
+
+        if (history->count - history->base_count == 0)
+        {
+            printw("\nNo command in history.");
+            return 0;
+        }
+
         int n;
 
         if (args[0][1] == '!' && strlen(args[0]) == 2)
         {
-            if (history->count - history->base_count > 0)
-            {
-                printw("\n[!! -> %s]", history->buffer[history->count - 1]);
-                strcpy(history->buffer[history->count], history->buffer[history->count - 1]);
-                return 1;
-            }
-            else
-            {
-                printw("\nNo command in history.");
-                return 0;
-            }
+            printw("\n[!! -> %s]", history->buffer[history->count - 1]);
+            strcpy(history->buffer[history->count], history->buffer[history->count - 1]);
+            return 1;
         }
         else if ((n = atoi(args[0] + 1)))
         {
@@ -118,9 +121,108 @@ int exc_command(History *history, char *args[MAX_COMMAND / 2 + 1], int len)
         }
         else
         {
-            printw("\n! invalid option: -- \'%s\'", args[0] + 1);
+            for (int i = history->count - 1; i > 0; --i)
+            {
+                if (strstr(history->buffer[i], args[0] + 1) == history->buffer[i])
+                {
+                    printw("\n[!%d -> %s]", i + 1, history->buffer[i]);
+                    strcpy(history->buffer[history->count], history->buffer[i]);
+                    return 1;
+                }
+            }
+            printw("\n! event not found: -- \'%s\'", args[0] + 1);
             return 0;
         }
     }
-    return -1;
+    else
+    {
+        char *_args[MAX_COMMAND / 2 + 1];
+        for (int i = 0; i < MAX_COMMAND / 2 + 1; ++i)
+        {
+            _args[i] = (char *)malloc(sizeof(char) * (MAX_COMMAND / 2 + 1));
+        }
+
+        int _len = form_args(_args, history, history->count - 1);
+        int flag = 0;
+        if (_len > 1)
+        {
+            char *ptr = history->buffer[history->count];
+            flag += replace(&ptr, ptr, "!$", _args[_len - 1]);
+            flag += replace(&ptr, ptr, "!^", _args[1]);
+        }
+        for (int i = 0; i < MAX_COMMAND / 2 + 1; ++i)
+        {
+            free(_args[i]);
+        }
+        // form_args(args, history, history->count); if flag
+
+        if (!flag)
+        {
+            return -1;
+        }
+        return 1;
+    }
+}
+int replace(char **ptr, char *str, char *sub, char *tar)
+{
+    int sub_len = strlen(sub);
+    int tar_len = strlen(tar);
+    char res[MAX_COMMAND];
+    char *p = res;
+    int i = 0;
+
+    while (*str)
+    {
+        if (strncmp(str, sub, sub_len) == 0)
+        {
+            strncpy(p, tar, tar_len);
+            p += tar_len;
+            str += sub_len;
+            ++i;
+        }
+        else
+        {
+            *p++ = *str++;
+        }
+    }
+    *p = '\0';
+    strcpy(*ptr, res);
+
+    return i;
+}
+
+int form_args(char *(args)[MAX_COMMAND / 2 + 1], History *history, int count)
+{
+    char cmd[MAX_COMMAND];
+    strcpy(cmd, history->buffer[count]);
+    char *token = strtok(cmd, " ");
+    int i = 0, len;
+    while (token != NULL)
+    {
+        printw("\n[%s]", token);
+        refresh();
+        strcpy(args[i], token);
+        printw("\n{%s}", args[i]);
+        refresh();
+        ++i;
+        token = strtok(NULL, " ");
+    }
+
+    if (args[i - 1][0] == '&')
+    {
+        history->background = 1;
+        printw("[background]\n");
+        args[i - 1] = NULL;
+
+        len = i - 1;
+    }
+    else
+    {
+        history->background = 0;
+        args[i] = NULL;
+        len = i;
+    }
+    printw("\n--end form--");
+    refresh();
+    return len;
 }

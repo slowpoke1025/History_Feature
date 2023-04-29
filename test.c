@@ -46,34 +46,6 @@ void init_window()
     scrollok(stdscr, TRUE);
 }
 
-int form_args(char *args[MAX_COMMAND / 2 + 1], History *history, int *background)
-{
-    *background = 0;
-    char cmd[MAX_COMMAND];
-    strcpy(cmd, history->buffer[history->count]);
-    // cmd[strcspn(cmd, "\n")] = '\0';
-    char *token = strtok(cmd, " ");
-    int i = 0, len;
-    while (token != NULL)
-    {
-        args[i++] = token;
-        token = strtok(NULL, " ");
-    }
-    if (args[i - 1][0] == '&')
-    {
-        *background = 1;
-        printw("[background]\n");
-        args[i - 1] = NULL;
-        len = i - 1;
-    }
-    else
-    {
-        args[i] = NULL;
-        len = i;
-    }
-    return len;
-}
-
 int main()
 {
     init_window();
@@ -87,8 +59,10 @@ int main()
     init_rstack(right);
     Cursor cursor;
 
+    // char *(*ptr)[MAX_COMMAND / 2 + 1] = &args;
+
     printw("Enter> ");
-    int pipefd[2];
+    refresh();
 
     while (1)
     {
@@ -180,16 +154,21 @@ int main()
                 sprintf(history->buffer[history->count], "%s%s", left->value, right->value + right->top);
                 move_x_end(&cursor);
 
-                char *args[MAX_COMMAND / 2 + 1];
-                int background;
-                int len = form_args(args, history, &background);
+                // char *args[MAX_COMMAND / 2 + 1];
 
+                char *args[MAX_COMMAND / 2 + 1];
+                for (int i = 0; i < MAX_COMMAND / 2 + 1; ++i)
+                {
+                    args[i] = (char *)malloc(sizeof(char) * (MAX_COMMAND / 2 + 1));
+                }
+                int len = form_args(args, history, history->count);
                 int res;
 
                 if ((res = exc_command(history, args, len)) == 1)
-                    len = form_args(args, history, &background);
+                    len = form_args(args, history, history->count);
 
                 printw("\n%d %s", history->count + 1, history->buffer[history->count]);
+                refresh();
 
                 if (res != 0 && !history_command(history, args, len)) // res == 0 || history_command(history, args, len)
                 {
@@ -207,7 +186,6 @@ int main()
                     }
 
                     int id = fork();
-
                     if (id == 0) // child
                     {
                         if (dup2(fd[1], STDOUT_FILENO) == -1)
@@ -224,6 +202,7 @@ int main()
                         close(fderr[0]);
                         close(fd[1]);
                         close(fderr[1]);
+
                         execvp(args[0], args);
 
                         exit(1);
@@ -231,7 +210,7 @@ int main()
                     else // parent
                     {
                         printw("\n---------\n");
-                        if (background)
+                        if (history->background)
                         {
                             printw("\n[%d]", id);
                         }
@@ -272,6 +251,10 @@ int main()
                     }
                 }
                 ++history->count;
+                for (int i = 0; i < MAX_COMMAND / 2 + 1; ++i)
+                {
+                    free(args[i]);
+                }
             }
             history->tmp_count = history->count;
             history->buffer[history->count][0] = '\0';

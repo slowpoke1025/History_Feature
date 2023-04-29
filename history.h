@@ -14,7 +14,7 @@ typedef struct History
     int tmp_count;
     int file_count;
     int base_count;
-
+    int background;
     char *filename;
 
 } History;
@@ -23,5 +23,7 @@ History *init_history(char *filename);
 void write_history();
 int history_command(History *history, char *args[MAX_COMMAND / 2 + 1], int len);
 int exc_command(History *history, char *args[MAX_COMMAND / 2 + 1], int len);
+int replace(char **ptr, char *str, char *sub, char *tar);
+int form_args(char * [MAX_COMMAND / 2 + 1], History *history, int count);
 
 #endif
