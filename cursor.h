@@ -8,7 +8,8 @@ typedef struct Cursor
 } Cursor;
 
 void move_x_delta(Cursor *cursor, int delta);
-void move_x_pos(Cursor *cursor, int pos);
+void move_x_pos(Cursor *cursor, char *base, int pos);
 void move_x_end(Cursor *cursor);
 void move_x_start(Cursor *cursor);
+void clean_line(Cursor *cursor);
 #endif

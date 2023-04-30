@@ -12,6 +12,7 @@ char pop_stack(Stack *stack)
 char push_stack(Stack *stack, char val)
 {
     stack->value[++stack->top] = val;
+    stack->value[stack->top + 1] = '\0';
     return val;
 }
 

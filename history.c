@@ -353,39 +353,3 @@ int _form_args(Args *A, char *str, int free)
         A->size = i;
     }
 }
-
-int form_args(char *(args)[MAX_COMMAND / 2 + 1], History *history, int count)
-{
-    char cmd[MAX_COMMAND];
-    strcpy(cmd, history->buffer[count]);
-    char *token = strtok(cmd, " ");
-    int i = 0, len;
-    while (token != NULL)
-    {
-        printw("\n[%s]", token);
-        refresh();
-        strcpy(args[i], token);
-        printw("\n{%s}", args[i]);
-        refresh();
-        ++i;
-        token = strtok(NULL, " ");
-    }
-
-    if (args[i - 1][0] == '&')
-    {
-        history->background = 1;
-        printw("[background]\n");
-        args[i - 1] = NULL;
-
-        len = i - 1;
-    }
-    else
-    {
-        history->background = 0;
-        args[i] = NULL;
-        len = i;
-    }
-    printw("\n--end form--");
-    refresh();
-    return len;
-}

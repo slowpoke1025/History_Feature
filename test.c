@@ -7,6 +7,7 @@
 #include "history.h"
 #include <unistd.h>
 #include <sys/wait.h>
+#include <ctype.h>
 
 // gcc test.c -o a -l ncurses
 
@@ -31,12 +32,6 @@ int empty_cli(CommandLine *CLI)
     return empty_stack(&(CLI->left)) && empty_rstack(&(CLI->right));
 }
 
-void clean_line(Cursor *cursor)
-{
-    move_x_start(cursor);
-    clrtoeol();
-}
-
 void init_window()
 {
     initscr();
@@ -44,6 +39,73 @@ void init_window()
     noecho();
     keypad(stdscr, TRUE);
     scrollok(stdscr, TRUE);
+    start_color(); // Enable color mode
+
+    // init_color(COLOR_RED, 254 * 1000 / 255, 161 * 1000 / 255, 191 * 1000 / 255);
+    // init_color(COLOR_CYAN, 0 * 1000 / 255, 231 * 1000 / 255, 255 * 1000 / 255);
+    // init_color(COLOR_GREEN, 98 * 1000 / 255, 210 * 1000 / 255, 162 * 1000 / 255);
+    // init_color(COLOR_MAGENTA, 164 * 1000 / 255, 89 * 1000 / 255, 209 * 1000 / 255);
+
+    init_pair(1, COLOR_RED, COLOR_BLACK);     // Define color pair
+    init_pair(2, COLOR_YELLOW, COLOR_BLACK);  // Define color pair
+    init_pair(3, COLOR_CYAN, COLOR_BLACK);    // Define color pair
+    init_pair(4, COLOR_GREEN, COLOR_BLACK);   // Define color pair
+    init_pair(5, COLOR_MAGENTA, COLOR_BLACK); // Define color pair
+
+    // attrset(A_NORMAL);
+    // attrset(COLOR_PAIR(1)); // Set text color to red
+}
+
+typedef struct Search_obj
+{
+    int i;
+    char *res;
+    int size;
+} Search_obj;
+
+Search_obj search(History *history, Stack *left, int base)
+{
+
+    if (base < 0)
+    {
+        base = history->count;
+    }
+    Search_obj s_obj = {base - 1, NULL, 0};
+
+    if (!empty_stack(left))
+    {
+        s_obj.size = left->top + 1;
+        for (; s_obj.i >= 0; --s_obj.i)
+        {
+            if ((s_obj.res = strstr(history->buffer[s_obj.i], left->value)))
+            {
+                return s_obj;
+            }
+        }
+    }
+
+    return s_obj;
+}
+
+void printw_search(Search_obj *s, History *history)
+{
+    char *ptr = history->buffer[s->i];
+
+    printw("[");
+    while (ptr != s->res)
+        printw("%c", *ptr++);
+
+    attrset(COLOR_PAIR(2)); // Set text color to red
+
+    for (int i = 0; i < s->size; ++i)
+    {
+        printw("%c", *ptr++);
+    }
+
+    attrset(A_NORMAL);
+    printw("%s", ptr);
+    printw("]");
+    refresh();
 }
 
 int main()
@@ -59,13 +121,12 @@ int main()
     init_rstack(right);
     Cursor cursor;
 
-    // char *(*ptr)[MAX_COMMAND / 2 + 1] = &args;
-
     printw("Enter> ");
     refresh();
 
     while (1)
     {
+
         int ch = getch();
 
         switch (ch)
@@ -73,13 +134,16 @@ int main()
         case KEY_UP:
 
             clean_line(&cursor);
-            close_stack(left);
+            // close_stack(left);
             sprintf(history->buffer[history->tmp_count], "%s%s", left->value, right->value + right->top);
 
             char *prev_commond;
             if (history->tmp_count == 0)
             {
+                attrset(COLOR_PAIR(1));
                 printw("No prev command!\n");
+                attrset(A_NORMAL);
+
                 prev_commond = history->buffer[history->tmp_count];
             }
             else
@@ -88,13 +152,123 @@ int main()
             }
 
             init_cli(&CLI, prev_commond);
-            printw("Enter> %s", prev_commond);
+
+            printw("Enter> ");
+            attrset(COLOR_PAIR(4));
+            printw("%s", prev_commond);
+            attrset(A_NORMAL);
+
+            break;
+
+        case KEY_CTRL('r'):
+
+            char str[MAX_COMMAND];
+            clean_line(&cursor);
+            attrset(COLOR_PAIR(5));
+            printw("(search)`");
+            attrset(A_NORMAL);
+            printw("%s", left->value);
+            attrset(COLOR_PAIR(5));
+            printw("': ");
+            attrset(A_NORMAL);
+
+            Search_obj s = search(history, left, -1);
+
+            if (s.res)
+            {
+                // printw("[%s]", history->buffer[s.i]);
+                printw_search(&s, history);
+            }
+            while (1)
+            {
+                move_x_pos(&cursor, "(search)`", left->top + 1);
+                int rc = getch();
+                if (isprint(rc))
+                {
+                    push_stack(left, rc);
+                    printw("%c", rc);
+                    attrset(COLOR_PAIR(5));
+                    printw("': ");
+                    attrset(A_NORMAL);
+
+                    clrtoeol();
+                    s = search(history, left, -1);
+                    if (s.res)
+                    {
+                        printw_search(&s, history);
+                    }
+                }
+                else if (rc == KEY_BACKSPACE)
+                {
+                    if (!empty_stack(left))
+                    {
+                        pop_stack(left);
+                        move_x_delta(&cursor, -1);
+                        clrtoeol();
+                        printw("': ");
+
+                        if (!empty_stack(left))
+                        {
+                            // if (!s.res)
+                            {
+                                s = search(history, left, -1);
+                            }
+                            if (s.res)
+                            {
+                                printw_search(&s, history);
+                            }
+                        }
+                    }
+                }
+                else if (rc == '\n')
+                {
+                    clean_line(&cursor);
+                    break;
+                }
+                else if (rc == KEY_CTRL('r'))
+                {
+                    Search_obj _s = search(history, left, s.i);
+                    if (_s.res)
+                    {
+                        s = _s;
+                        clrtoeol();
+                        printw("': ");
+                        printw_search(&s, history);
+                    }
+                }
+                else if (rc == KEY_LEFT || rc == KEY_RIGHT)
+                {
+
+                    clean_line(&cursor);
+                    char *command;
+                    if (s.res)
+                    {
+                        command = history->buffer[s.i];
+                        init_cli(&CLI, command);
+                    }
+                    else
+                    {
+                        command = left->value;
+                    }
+
+                    printw("Enter> ");
+                    attrset(COLOR_PAIR(4));
+                    printw("%s", command);
+                    attrset(A_NORMAL);
+                    break;
+                }
+                else
+                {
+                }
+            }
+
             break;
         case KEY_CTRL('d'):
             history->file = fopen(history->filename, "a");
             if (!history->file)
             {
-                puts("Failed to update the (*history) file.");
+                printw("Failed to update the (*history) file.");
+                refresh();
                 exit(1);
             }
 
@@ -108,12 +282,13 @@ int main()
             // remove(history->filename);
             // rename("_h.txt", "h.txt");
             free(history);
+
             exit(0);
             break;
 
         case KEY_DOWN:
             clean_line(&cursor);
-            close_stack(left);
+            // close_stack(left);
             sprintf(history->buffer[history->tmp_count], "%s%s", left->value, right->value + right->top);
 
             char *next_command;
@@ -128,7 +303,10 @@ int main()
                 next_command = history->buffer[++history->tmp_count];
             }
             init_cli(&CLI, next_command);
-            printw("Enter> %s", next_command);
+            printw("Enter> ");
+            attrset(COLOR_PAIR(4));
+            printw("%s", next_command);
+            attrset(A_NORMAL);
             break;
 
         case KEY_LEFT:
@@ -189,7 +367,6 @@ int main()
                         close(fderr[0]);
                         close(fd[1]);
                         close(fderr[1]);
-
                         execvp(A.args[0], A.args);
 
                         exit(1);
@@ -216,6 +393,8 @@ int main()
                             close(fderr[1]); // Close the write end of the pipe
 
                             int n;
+                            attrset(COLOR_PAIR(1)); // Set text color to red
+
                             while ((n = read(fderr[0], buferr, 1)) > 0)
                             {
                                 buferr[n] = '\0';
@@ -223,10 +402,14 @@ int main()
                             }
                             close(fderr[0]);
 
+                            attrset(COLOR_PAIR(3)); // Set text color to red
+
                             while ((n = read(fd[0], buf, 1)) > 0)
                             {
                                 if (buf[0] == 27)
                                 {
+                                    attrset(COLOR_PAIR(1)); // Set text color to red
+
                                     printw("Command '%s' not found\n", A.args[0]);
                                     close(fd[0]);
                                     break;
@@ -237,6 +420,7 @@ int main()
                             }
                             close(fd[0]);
                         }
+                        attrset(A_NORMAL); // Set text color to red
 
                         printw("---------\n");
                     }
@@ -248,6 +432,7 @@ int main()
             history->buffer[history->count][0] = '\0';
             init_cli(&CLI, history->buffer[history->count]);
             printw("\nEnter> ");
+            refresh();
             break;
 
         case KEY_BACKSPACE:
@@ -258,16 +443,19 @@ int main()
                 move_x_delta(&cursor, -1);
                 clrtoeol();
                 printw("%s", right->value + right->top);
-                move_x_pos(&cursor, left->top + 1);
+                move_x_pos(&cursor, "Enter> ", left->top + 1);
             }
             break;
 
         default:
             push_stack(left, ch);
+            attrset(COLOR_PAIR(4)); // Set text color to red
             printw("%c", ch);
             clrtoeol();
             printw("%s", right->value + right->top);
-            move_x_pos(&cursor, left->top + 1);
+            attrset(A_NORMAL);
+            refresh();
+            move_x_pos(&cursor, "Enter> ", left->top + 1);
             break;
         }
     }
