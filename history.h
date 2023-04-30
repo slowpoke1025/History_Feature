@@ -30,7 +30,7 @@ History *init_history(char *filename);
 void write_history();
 int history_command(Args *A, History *History);
 
-int exc_command(Args *A, History *history);
+int exc_replace(Args *A, History *history);
 
 int replace(char **ptr, char *str, char *sub, char *tar);
 int _form_args(Args *A, char *str, int free);

@@ -18,6 +18,13 @@ typedef struct CommandLine
     char *history;
 } CommandLine;
 
+typedef struct Search_obj
+{
+    int i;
+    char *res;
+    int size;
+} Search_obj;
+
 void init_cli(CommandLine *CLI, char *history)
 {
     strcpy(CLI->left.value, history);
@@ -55,13 +62,6 @@ void init_window()
     // attrset(A_NORMAL);
     // attrset(COLOR_PAIR(1)); // Set text color to red
 }
-
-typedef struct Search_obj
-{
-    int i;
-    char *res;
-    int size;
-} Search_obj;
 
 Search_obj search(History *history, Stack *left, int base)
 {
@@ -108,6 +108,119 @@ void printw_search(Search_obj *s, History *history)
     refresh();
 }
 
+void exc_command(History *history, CommandLine *CLI, Stack *left, RStack *right, Cursor *cursor)
+{
+
+    if (!empty_cli(CLI))
+    {
+        // close_stack(left);
+        sprintf(history->buffer[history->count], "%s%s", left->value, right->value + right->top);
+        move_x_end(cursor);
+        Args A;
+        _form_args(&A, history->buffer[history->count], FALSE);
+        printw("\ntest");
+        refresh();
+        if (exc_replace(&A, history) && !history_command(&A, history)) // res == 0 || history_command(history, args, len)
+        {
+            int fd[2];
+            int fderr[2];
+            if (pipe(fd) == -1)
+            {
+                perror("pipe");
+                exit(1);
+            }
+            if (pipe(fderr) == -1)
+            {
+                perror("pipe");
+                exit(1);
+            }
+
+            int id = fork();
+            if (id == 0) // child
+            {
+                if (dup2(fd[1], STDOUT_FILENO) == -1)
+                {
+                    perror("dup2");
+                    exit(1);
+                }
+                if (dup2(fderr[1], STDERR_FILENO) == -1)
+                {
+                    perror("dup2");
+                    exit(1);
+                }
+                close(fd[0]);
+                close(fderr[0]);
+                close(fd[1]);
+                close(fderr[1]);
+                execvp(A.args[0], A.args);
+
+                exit(1);
+            }
+            else // parent
+            {
+
+                printw("\n---------\n");
+                refresh();
+
+                if (A.paralle)
+                {
+                    printw("\n[%d]", id);
+                    refresh();
+                }
+                else
+                {
+                    wait(NULL);
+
+                    char buferr[BUFFER_SIZE];
+                    char buf[BUFFER_SIZE];
+
+                    close(fd[1]);    // Close the write end of the pipe
+                    close(fderr[1]); // Close the write end of the pipe
+
+                    int n;
+                    attrset(COLOR_PAIR(1)); // Set text color to red
+
+                    while ((n = read(fderr[0], buferr, 1)) > 0)
+                    {
+                        buferr[n] = '\0';
+                        printw("%s", buferr);
+                    }
+                    close(fderr[0]);
+
+                    attrset(COLOR_PAIR(3)); // Set text color to red
+
+                    while ((n = read(fd[0], buf, 1)) > 0)
+                    {
+                        if (buf[0] == 27)
+                        {
+                            attrset(COLOR_PAIR(1)); // Set text color to red
+
+                            printw("Command '%s' not found\n", A.args[0]);
+                            close(fd[0]);
+                            break;
+                        }
+                        buf[n] = '\0';
+                        printw("%s", buf);
+                        refresh();
+                    }
+                    close(fd[0]);
+                }
+                attrset(A_NORMAL);
+
+                printw("---------\n");
+            }
+        }
+        ++history->count;
+        _free_args(&A);
+    }
+
+    history->tmp_count = history->count;
+    history->buffer[history->count][0] = '\0';
+    init_cli(CLI, history->buffer[history->count]);
+    printw("\nEnter> ");
+    refresh();
+}
+
 int main()
 {
     init_window();
@@ -126,7 +239,6 @@ int main()
 
     while (1)
     {
-
         int ch = getch();
 
         switch (ch)
@@ -207,22 +319,39 @@ int main()
                         clrtoeol();
                         printw("': ");
 
-                        if (!empty_stack(left))
+                        s = search(history, left, -1);
+
+                        if (s.res)
                         {
-                            // if (!s.res)
-                            {
-                                s = search(history, left, -1);
-                            }
-                            if (s.res)
-                            {
-                                printw_search(&s, history);
-                            }
+                            printw_search(&s, history);
                         }
                     }
                 }
-                else if (rc == '\n')
+                else if (rc == '\n' || rc == KEY_LEFT || rc == KEY_RIGHT)
                 {
                     clean_line(&cursor);
+                    char *command;
+                    if (s.res)
+                    {
+                        command = history->buffer[s.i];
+                        init_cli(&CLI, history->buffer[s.i]);
+                    }
+                    else
+                    {
+                        command = left->value;
+                    }
+
+                    printw("Enter> ");
+                    attrset(COLOR_PAIR(4));
+                    printw("%s", command);
+                    attrset(A_NORMAL);
+                    refresh();
+
+                    if (rc == '\n')
+                    {
+                        exc_command(history, &CLI, left, right, &cursor);
+                    }
+
                     break;
                 }
                 else if (rc == KEY_CTRL('r'))
@@ -235,27 +364,6 @@ int main()
                         printw("': ");
                         printw_search(&s, history);
                     }
-                }
-                else if (rc == KEY_LEFT || rc == KEY_RIGHT)
-                {
-
-                    clean_line(&cursor);
-                    char *command;
-                    if (s.res)
-                    {
-                        command = history->buffer[s.i];
-                        init_cli(&CLI, command);
-                    }
-                    else
-                    {
-                        command = left->value;
-                    }
-
-                    printw("Enter> ");
-                    attrset(COLOR_PAIR(4));
-                    printw("%s", command);
-                    attrset(A_NORMAL);
-                    break;
                 }
                 else
                 {
@@ -274,7 +382,6 @@ int main()
 
             for (int i = history->file_count; i < history->count; ++i)
             {
-
                 fprintf(history->file, "%s\n", history->buffer[i]);
             }
             fclose(history->file);
@@ -302,6 +409,7 @@ int main()
             {
                 next_command = history->buffer[++history->tmp_count];
             }
+
             init_cli(&CLI, next_command);
             printw("Enter> ");
             attrset(COLOR_PAIR(4));
@@ -326,120 +434,15 @@ int main()
             break;
 
         case '\n':
-            if (!empty_cli(&CLI))
-            {
-                close_stack(left);
-                sprintf(history->buffer[history->count], "%s%s", left->value, right->value + right->top);
-                move_x_end(&cursor);
 
-                Args A;
-                _form_args(&A, history->buffer[history->count], FALSE);
+            exc_command(history, &CLI, left, right, &cursor);
 
-                if (exc_command(&A, history) && !history_command(&A, history)) // res == 0 || history_command(history, args, len)
-                {
-                    int fd[2];
-                    int fderr[2];
-                    if (pipe(fd) == -1)
-                    {
-                        perror("pipe");
-                        exit(1);
-                    }
-                    if (pipe(fderr) == -1)
-                    {
-                        perror("pipe");
-                        exit(1);
-                    }
-
-                    int id = fork();
-                    if (id == 0) // child
-                    {
-                        if (dup2(fd[1], STDOUT_FILENO) == -1)
-                        {
-                            perror("dup2");
-                            exit(1);
-                        }
-                        if (dup2(fderr[1], STDERR_FILENO) == -1)
-                        {
-                            perror("dup2");
-                            exit(1);
-                        }
-                        close(fd[0]);
-                        close(fderr[0]);
-                        close(fd[1]);
-                        close(fderr[1]);
-                        execvp(A.args[0], A.args);
-
-                        exit(1);
-                    }
-                    else // parent
-                    {
-
-                        printw("\n---------\n");
-                        refresh();
-
-                        if (A.paralle)
-                        {
-                            printw("\n[%d]", id);
-                            refresh();
-                        }
-                        else
-                        {
-                            wait(NULL);
-
-                            char buferr[BUFFER_SIZE];
-                            char buf[BUFFER_SIZE];
-
-                            close(fd[1]);    // Close the write end of the pipe
-                            close(fderr[1]); // Close the write end of the pipe
-
-                            int n;
-                            attrset(COLOR_PAIR(1)); // Set text color to red
-
-                            while ((n = read(fderr[0], buferr, 1)) > 0)
-                            {
-                                buferr[n] = '\0';
-                                printw("%s", buferr);
-                            }
-                            close(fderr[0]);
-
-                            attrset(COLOR_PAIR(3)); // Set text color to red
-
-                            while ((n = read(fd[0], buf, 1)) > 0)
-                            {
-                                if (buf[0] == 27)
-                                {
-                                    attrset(COLOR_PAIR(1)); // Set text color to red
-
-                                    printw("Command '%s' not found\n", A.args[0]);
-                                    close(fd[0]);
-                                    break;
-                                }
-                                buf[n] = '\0';
-                                printw("%s", buf);
-                                refresh();
-                            }
-                            close(fd[0]);
-                        }
-                        attrset(A_NORMAL); // Set text color to red
-
-                        printw("---------\n");
-                    }
-                }
-                ++history->count;
-                _free_args(&A);
-            }
-            history->tmp_count = history->count;
-            history->buffer[history->count][0] = '\0';
-            init_cli(&CLI, history->buffer[history->count]);
-            printw("\nEnter> ");
-            refresh();
             break;
 
         case KEY_BACKSPACE:
             if (!empty_stack(left))
             {
                 pop_stack(left);
-                // printw("\b");
                 move_x_delta(&cursor, -1);
                 clrtoeol();
                 printw("%s", right->value + right->top);

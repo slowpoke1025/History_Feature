@@ -74,7 +74,7 @@ int history_command(Args *A, History *history)
     return 0;
 }
 
-int exc_command(Args *A, History *history)
+int exc_replace(Args *A, History *history)
 {
     char *ptr = history->buffer[history->count];
     if (!strchr(ptr, '!'))
