@@ -28,7 +28,6 @@ typedef struct Search_obj
 void init_cli(CommandLine *CLI, char *history)
 {
     strcpy(CLI->left.value, history);
-
     CLI->left.top = strlen(history) - 1;
     CLI->right.top = BUFFER_SIZE;
     CLI->history = history;
@@ -65,20 +64,22 @@ void init_window()
 
 Search_obj search(History *history, Stack *left, int base)
 {
-
     if (base < 0)
     {
         base = history->count;
     }
-    Search_obj s_obj = {base - 1, NULL, 0};
+    Search_obj s_obj = {0, NULL, 0};
 
     if (!empty_stack(left))
     {
         s_obj.size = left->top + 1;
-        for (; s_obj.i >= 0; --s_obj.i)
+
+        int count = !isFull(history) ? base : MAX_HISTORY - (history->count - base) - 1;
+        for (int i = 1; i <= count; ++i)
         {
-            if ((s_obj.res = strstr(history->buffer[s_obj.i], left->value)))
+            if ((s_obj.res = strstr(history->buffer[(base - i) % MAX_HISTORY], left->value)))
             {
+                s_obj.i = base - i;
                 return s_obj;
             }
         }
@@ -89,9 +90,9 @@ Search_obj search(History *history, Stack *left, int base)
 
 void printw_search(Search_obj *s, History *history)
 {
-    char *ptr = history->buffer[s->i];
+    char *ptr = history->buffer[s->i % MAX_HISTORY];
 
-    printw("[");
+    printw("[%d][", s->i + 1);
     while (ptr != s->res)
         printw("%c", *ptr++);
 
@@ -113,13 +114,11 @@ void exc_command(History *history, CommandLine *CLI, Stack *left, RStack *right,
 
     if (!empty_cli(CLI))
     {
-        // close_stack(left);
-        sprintf(history->buffer[history->count], "%s%s", left->value, right->value + right->top);
+        sprintf(history->buffer[history->count % MAX_HISTORY], "%s%s", left->value, right->value + right->top);
         move_x_end(cursor);
         Args A;
-        _form_args(&A, history->buffer[history->count], FALSE);
-        printw("\ntest");
-        refresh();
+        _form_args(&A, history->buffer[history->count % MAX_HISTORY], FALSE);
+
         if (exc_replace(&A, history) && !history_command(&A, history)) // res == 0 || history_command(history, args, len)
         {
             int fd[2];
@@ -153,7 +152,6 @@ void exc_command(History *history, CommandLine *CLI, Stack *left, RStack *right,
                 close(fd[1]);
                 close(fderr[1]);
                 execvp(A.args[0], A.args);
-
                 exit(1);
             }
             else // parent
@@ -164,7 +162,7 @@ void exc_command(History *history, CommandLine *CLI, Stack *left, RStack *right,
 
                 if (A.paralle)
                 {
-                    printw("\n[%d]", id);
+                    printw("[%d]", id);
                     refresh();
                 }
                 else
@@ -177,32 +175,27 @@ void exc_command(History *history, CommandLine *CLI, Stack *left, RStack *right,
                     close(fd[1]);    // Close the write end of the pipe
                     close(fderr[1]); // Close the write end of the pipe
 
-                    int n;
+                    int flag = 0, n = 0;
                     attrset(COLOR_PAIR(1)); // Set text color to red
 
                     while ((n = read(fderr[0], buferr, 1)) > 0)
                     {
                         buferr[n] = '\0';
                         printw("%s", buferr);
+                        refresh();
                     }
-                    close(fderr[0]);
 
-                    attrset(COLOR_PAIR(3)); // Set text color to red
+                    attrset(COLOR_PAIR(3));
 
                     while ((n = read(fd[0], buf, 1)) > 0)
                     {
-                        if (buf[0] == 27)
-                        {
-                            attrset(COLOR_PAIR(1)); // Set text color to red
-
-                            printw("Command '%s' not found\n", A.args[0]);
-                            close(fd[0]);
-                            break;
-                        }
+                        ++flag;
                         buf[n] = '\0';
                         printw("%s", buf);
                         refresh();
                     }
+
+                    close(fderr[0]);
                     close(fd[0]);
                 }
                 attrset(A_NORMAL);
@@ -215,8 +208,10 @@ void exc_command(History *history, CommandLine *CLI, Stack *left, RStack *right,
     }
 
     history->tmp_count = history->count;
-    history->buffer[history->count][0] = '\0';
-    init_cli(CLI, history->buffer[history->count]);
+    history->buffer[history->count % MAX_HISTORY][0] = '\0';
+
+    init_cli(CLI, history->buffer[history->count % MAX_HISTORY]);
+    printw("\n[%d]", history->count);
     printw("\nEnter> ");
     refresh();
 }
@@ -226,7 +221,6 @@ int main()
     init_window();
 
     History *history = init_history(NULL);
-
     CommandLine CLI;
     Stack *left = &(CLI.left);
     RStack *right = &(CLI.right);
@@ -246,21 +240,20 @@ int main()
         case KEY_UP:
 
             clean_line(&cursor);
-            // close_stack(left);
-            sprintf(history->buffer[history->tmp_count], "%s%s", left->value, right->value + right->top);
+            sprintf(history->buffer[history->tmp_count % MAX_HISTORY], "%s%s", left->value, right->value + right->top);
 
             char *prev_commond;
-            if (history->tmp_count == 0)
+            if (history->tmp_count % MAX_HISTORY == get_oldest(history) % MAX_HISTORY)
             {
                 attrset(COLOR_PAIR(1));
                 printw("No prev command!\n");
                 attrset(A_NORMAL);
 
-                prev_commond = history->buffer[history->tmp_count];
+                prev_commond = history->buffer[history->tmp_count % MAX_HISTORY];
             }
             else
             {
-                prev_commond = history->buffer[--history->tmp_count];
+                prev_commond = history->buffer[--history->tmp_count % MAX_HISTORY];
             }
 
             init_cli(&CLI, prev_commond);
@@ -276,19 +269,22 @@ int main()
 
             char str[MAX_COMMAND];
             clean_line(&cursor);
+
             attrset(COLOR_PAIR(5));
             printw("(search)`");
+
             attrset(A_NORMAL);
             printw("%s", left->value);
+
             attrset(COLOR_PAIR(5));
             printw("': ");
+
             attrset(A_NORMAL);
 
             Search_obj s = search(history, left, -1);
 
             if (s.res)
             {
-                // printw("[%s]", history->buffer[s.i]);
                 printw_search(&s, history);
             }
             while (1)
@@ -365,49 +361,30 @@ int main()
                         printw_search(&s, history);
                     }
                 }
-                else
-                {
-                }
             }
 
             break;
         case KEY_CTRL('d'):
-            history->file = fopen(history->filename, "a");
-            if (!history->file)
-            {
-                printw("Failed to update the (*history) file.");
-                refresh();
-                exit(1);
-            }
-
-            for (int i = history->file_count; i < history->count; ++i)
-            {
-                fprintf(history->file, "%s\n", history->buffer[i]);
-            }
-            fclose(history->file);
-
-            // remove(history->filename);
-            // rename("_h.txt", "h.txt");
+            write_history(history);
             free(history);
-
+            endwin();
             exit(0);
             break;
 
         case KEY_DOWN:
             clean_line(&cursor);
-            // close_stack(left);
-            sprintf(history->buffer[history->tmp_count], "%s%s", left->value, right->value + right->top);
+            sprintf(history->buffer[history->tmp_count % MAX_HISTORY], "%s%s", left->value, right->value + right->top);
 
             char *next_command;
 
             if (history->tmp_count == history->count)
             {
-                next_command = history->buffer[history->tmp_count];
                 printw("No new command!\n");
+                next_command = history->buffer[history->count % MAX_HISTORY];
             }
             else
             {
-                next_command = history->buffer[++history->tmp_count];
+                next_command = history->buffer[++history->tmp_count % MAX_HISTORY];
             }
 
             init_cli(&CLI, next_command);
@@ -434,9 +411,7 @@ int main()
             break;
 
         case '\n':
-
             exc_command(history, &CLI, left, right, &cursor);
-
             break;
 
         case KEY_BACKSPACE:
@@ -445,14 +420,17 @@ int main()
                 pop_stack(left);
                 move_x_delta(&cursor, -1);
                 clrtoeol();
+                attrset(COLOR_PAIR(4));
                 printw("%s", right->value + right->top);
+                attrset(A_NORMAL);
+
                 move_x_pos(&cursor, "Enter> ", left->top + 1);
             }
             break;
 
         default:
             push_stack(left, ch);
-            attrset(COLOR_PAIR(4)); // Set text color to red
+            attrset(COLOR_PAIR(4));
             printw("%c", ch);
             clrtoeol();
             printw("%s", right->value + right->top);

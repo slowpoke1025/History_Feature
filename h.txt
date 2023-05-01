@@ -1,29 +1,11 @@
+--8--
+--9--
+--10--
+history
+--1--
+history
+--3--
+!-12
 ls
-ps
 history
-ls
-ps
-ps
-ps
-history
-ls
-history
-ps
-ps
-sleep 5 &
-ps
-history
-sleep 5 &
-ps
-!0
-!ac
-!50
-history
-ls
-ps
-history
-ps
-ps
-history
-ls
-ls cat.txt h.txt
+history -w

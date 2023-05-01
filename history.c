@@ -4,8 +4,6 @@
 #include <ncurses.h>
 #include <unistd.h>
 
-History *__history;
-
 History *init_history(char *filename)
 {
     History *history = (History *)malloc(sizeof(History));
@@ -26,46 +24,131 @@ History *init_history(char *filename)
     }
     char entry[MAX_COMMAND];
     history->count = 0;
-    history->base_count = 0;
     while (fgets(entry, MAX_COMMAND, history->file))
     {
         entry[strcspn(entry, "\n")] = '\0';
-        strcpy(history->buffer[history->count++], entry);
+        strcpy(history->buffer[history->count], entry);
+        if (++history->count == MAX_HISTORY - 1)
+        {
+            break;
+        }
     }
-    history->tmp_count = history->file_count = history->count;
+
+    history->tmp_count = history->count;
+    for (int i = history->count; i < MAX_HISTORY; ++i)
+    {
+        history->buffer[i][0] = '\0';
+    }
     fclose(history->file);
-    atexit(write_history);
-    __history = history;
+    // atexit(write_history);
+    // __history = history;
     return history;
 }
-
-void write_history()
+int isFull(History *history)
 {
-    endwin();
+    return history->count >= MAX_HISTORY - 1;
+}
+int get_oldest(History *history)
+{
+    return history->count < MAX_HISTORY ? 0 : (history->count + 1);
+}
+int get_count(History *history)
+{
+    return !isFull(history) ? history->count : MAX_HISTORY - 1;
+}
+
+void write_history(History *history)
+{
+
+    history->file = fopen("_h.txt", "w");
+    if (!history->file)
+    {
+        printw("Failed to update the (*history) file.");
+        refresh();
+        exit(1);
+    }
+
+    int count = get_count(history);
+    int base = get_oldest(history);
+
+    for (int i = 0; i < count; ++i)
+    {
+        fprintf(history->file, "%s\n", history->buffer[(base + i) % MAX_HISTORY]);
+    }
+    fclose(history->file);
+
+    remove(history->filename);
+    rename("_h.txt", history->filename);
 }
 
 int history_command(Args *A, History *history)
 {
     if (strcmp(A->args[0], "history") == 0)
     {
+        int count = get_count(history);
+        if (count == 0)
+        {
+            attrset(COLOR_PAIR(1));
+            printw("\nNo command in history.");
+            attrset(A_NORMAL);
+            return 1;
+        }
+        int n;
+
         if (A->size == 1)
-        { // 全部history
-            for (int i = 0; i <= history->count; ++i)
+        {
+            int base = get_oldest(history);
+            int pos = history->count - count;
+
+            if (isFull(history))
             {
-                printw("\n%4d %s", i + 1, history->buffer[i]);
+                ++base;
+                ++pos;
+                --count;
+            }
+
+            attrset(COLOR_PAIR(3));
+            for (int i = 1; i <= count + 1; ++i)
+            {
+                printw("\n%4d %s", pos + i, history->buffer[base % MAX_HISTORY]);
+                ++base;
+                refresh();
+            }
+            attrset(A_NORMAL);
+        }
+
+        else if ((n = atoi(A->args[1])))
+        {
+            n = n > count ? count : n;
+
+            for (int i = n; i > 0; --i)
+            {
+                int pos = history->count - i;
+                printw("\n%4d %s", pos + 1, history->buffer[pos % MAX_HISTORY]);
                 refresh();
             }
         }
-        else if (A->size == 2 && A->args[1][0] == '-' && strlen(A->args[1]) == 2)
+
+        else if (A->args[1][0] == '-' && strlen(A->args[1]) == 2)
         {
             switch (A->args[1][1])
             {
             case 'w':
+                printw("\nwww");
+                write_history(history);
                 break;
             case 'c':
+                printw("\nccc");
+                for (int i = 0; i < MAX_HISTORY; ++i)
+                {
+                    history->buffer[i][0] = '\0';
+                }
+                history->count = -1;
                 break;
             default:
-                printw("\nhistory invalid option: -- \'%s\'", A->args[1]);
+                attrset(COLOR_PAIR(1));
+                printw("\nhistory invalid option: -- \'%s\'\n", A->args[1]);
+                attrset(A_NORMAL);
                 break;
             }
         }
@@ -76,14 +159,19 @@ int history_command(Args *A, History *history)
 
 int exc_replace(Args *A, History *history)
 {
-    char *ptr = history->buffer[history->count];
+    char *ptr = history->buffer[history->count % MAX_HISTORY];
+    char *pptr = history->buffer[(history->count - 1) % MAX_HISTORY];
     if (!strchr(ptr, '!'))
     {
         return -1;
     }
-    if (history->count - history->base_count == 0)
+
+    int count = get_count(history);
+    if (count == 0)
     {
+        attrset(COLOR_PAIR(1));
         printw("\nNo command in history.");
+        attrset(A_NORMAL);
         return 0;
     }
 
@@ -93,57 +181,65 @@ int exc_replace(Args *A, History *history)
 
         if (A->args[0][1] == '!')
         {
-            printw("\n[!! -> %s]", history->buffer[history->count - 1]);
-            strcpy(history->buffer[history->count], history->buffer[history->count - 1]);
-            _form_args(A, history->buffer[history->count], FALSE);
+            printw("\n[!! -> %s]", pptr);
+            strcpy(ptr, pptr);
+            _form_args(A, ptr, FALSE);
             return 1;
         }
         else if ((n = atoi(A->args[0] + 1)))
         {
             int index;
-            if (n > history->base_count && n <= history->count)
+            if (n > history->count - count && n <= history->count)
             {
                 index = n - 1;
             }
-            else if (n < 0 && -n <= history->count - history->base_count)
+            else if (n < 0 && -n <= count)
             {
                 index = history->count + n;
             }
             else
             {
-                printw("\nNo such command in history");
+                attrset(COLOR_PAIR(1));
+                printw("\nNo such command in history\n");
+                attrset(A_NORMAL);
+
                 return 0;
             }
 
-            printw("\n[!%d -> %s]", n, history->buffer[index]);
-            strcpy(history->buffer[history->count], history->buffer[index]);
-            _form_args(A, history->buffer[history->count], FALSE);
+            printw("\n[!%d -> %s]", n, history->buffer[index % MAX_HISTORY]);
+            strcpy(ptr, history->buffer[index % MAX_HISTORY]);
+            _form_args(A, ptr, FALSE);
             return 1;
         }
         else
         {
-            for (int i = history->count - 1; i >= 0; --i)
+            int base = history->count - 1;
+
+            for (int i = 0; i < count; ++i)
             {
-                if (strncmp(A->args[0] + 1, history->buffer[i], strlen(A->args[0] + 1)) == 0)
+                int pos = (base - i) % MAX_HISTORY;
+                if (strncmp(A->args[0] + 1, history->buffer[pos], strlen(A->args[0] + 1)) == 0)
                 {
-                    printw("\n[!%d -> %s (%s)]", i + 1, history->buffer[i], A->args[0] + 1);
-                    strcpy(history->buffer[history->count], history->buffer[i]);
-
-                    _form_args(A, history->buffer[history->count], FALSE);
-
+                    printw("\n[!%s -> %s ]", A->args[0] + 1, history->buffer[pos]);
+                    strcpy(ptr, history->buffer[pos]);
+                    _form_args(A, ptr, FALSE);
                     return 1;
                 }
             }
+
+            attrset(COLOR_PAIR(1));
+
             printw("\n! event not found: -- \'%s\'", A->args[0] + 1);
+            attrset(A_NORMAL);
+
             return 0;
         }
     }
     else
     {
-        _form_args(A, history->buffer[history->count - 1], FALSE);
+        _form_args(A, pptr, FALSE);
 
         int flag = 0, _flag = 0;
-        char *ptr = history->buffer[history->count];
 
         if (A->size > 1)
         {
@@ -186,22 +282,22 @@ int exc_replace(Args *A, History *history)
             if ((n = atoi(ptr + exc + 1)))
             {
                 int index;
-                if (n > history->base_count && n <= history->count)
+                // if (n > get_oldest(history) && n <= history->count)
+                if (n > history->count - count && n <= history->count)
                 {
                     index = n - 1;
                 }
-                else if (n < 0 && -n <= history->count - history->base_count)
+                else if (n < 0 && -n <= count)
                 {
                     index = history->count + n;
                 }
                 else
                 {
-                    // printw("\nNo such command in history");
                     flag = 0;
                     break;
                 }
 
-                _form_args(A, history->buffer[index], FALSE);
+                _form_args(A, history->buffer[index % MAX_HISTORY], FALSE);
 
                 n_par = get_n_par(A, par);
                 if (!n_par)
@@ -219,17 +315,17 @@ int exc_replace(Args *A, History *history)
                 strncpy(cmd, str + 1, len_cmd);
                 cmd[len_cmd] = '\0';
 
-                for (int i = history->count - 1; i >= 0; --i)
+                int base = history->count - 1;
+                for (int i = 0; i < count; ++i)
                 {
-                    if (strncmp(cmd, history->buffer[i], len_cmd) == 0)
+                    int pos = (base - i) % MAX_HISTORY;
+                    if (strncmp(cmd, history->buffer[pos], len_cmd) == 0)
                     {
-                        _form_args(A, history->buffer[i], FALSE);
+                        _form_args(A, history->buffer[pos], FALSE);
                         n_par = get_n_par(A, par);
                         if (n_par)
                         {
                             flag += replace(&ptr, ptr, str, A->args[n_par]);
-                            printw("\nn_par=%s, ptr=%s", A->args[n_par], ptr);
-                            refresh();
                             break;
                         }
                         flag = 0;
@@ -239,13 +335,16 @@ int exc_replace(Args *A, History *history)
 
                 if (flag == _flag)
                 {
+                    attrset(COLOR_PAIR(1));
                     printw("\n! event not found: -- \'%s\'", str);
+                    attrset(A_NORMAL);
+
                     return 0;
                 }
             }
         }
 
-        _form_args(A, history->buffer[history->count], TRUE);
+        _form_args(A, history->buffer[history->count % MAX_HISTORY], TRUE); // 迴圈終止
 
         if (!flag)
         {
@@ -279,6 +378,7 @@ int get_n_par(Args *A, char *par)
 int replace(char **ptr, char *str, char *sub, char *tar)
 {
     printw("\nreplace %s -> %s", sub, tar);
+    refresh();
     int sub_len = strlen(sub);
     int tar_len = strlen(tar);
     char res[MAX_COMMAND];
@@ -301,7 +401,6 @@ int replace(char **ptr, char *str, char *sub, char *tar)
     }
     *p = '\0';
     strcpy(*ptr, res);
-
     return i;
 }
 

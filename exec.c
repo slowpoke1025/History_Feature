@@ -5,29 +5,12 @@
 #include <ncurses.h>
 int main()
 {
-    initscr(); // Initialize ncurses screen
-    // 初始化颜色
-    start_color();
-    init_color(COLOR_MAGENTA, 219 * 1000 / 255, 112 * 1000 / 255, 147 * 1000 / 255);
-    init_color(COLOR_CYAN, 0 * 1000 / 255, 255 * 1000 / 255, 255 * 1000 / 255);
-    init_color(COLOR_GREEN, 0 * 1000 / 255, 255 * 1000 / 255, 0 * 1000 / 255);
-    init_pair(USERNAME_COLOR, COLOR_MAGENTA, COLOR_BLACK);
-    init_pair(COMMAND_COLOR, COLOR_CYAN, COLOR_BLACK);
-    init_pair(OUTPUT_COLOR, COLOR_GREEN, COLOR_BLACK);
-    init_pair(ERROR_COLOR, COLOR_RED, COLOR_BLACK);
-
-    // 设置文本颜色
-    attrset(COLOR_PAIR(USERNAME_COLOR));
-    printw("%s", "username");
-
-    attrset(COLOR_PAIR(COMMAND_COLOR));
-    printw("%s", "command");
-
-    attrset(COLOR_PAIR(OUTPUT_COLOR));
-    printw("%s", "output");
-
-    attrset(COLOR_PAIR(ERROR_COLOR));
-    printw("%s", "error");
-    endwin();
-    refresh();
+    FILE *fp = fopen("h.txt", "w");
+    for (size_t i = 1; i <= 10; i++)
+    {
+        fprintf(fp, "--%d--\n", i);
+    }
+    fclose(fp);
+    int i = 5;
+    printf("%d", --i % 3);
 }
